@@ -139,6 +139,9 @@ export default function Home() {
 
   const [showConfirmModal, setShowConfirmModal] = useState(false);
 
+  // Server connection status
+  const [serverStatus, setServerStatus] = useState<"checking" | "active" | "warming" | "offline">("checking");
+
   // Fetch search history
   const fetchHistory = async () => {
     try {
@@ -152,8 +155,40 @@ export default function Home() {
     }
   };
 
+  // Check backend server connection status
+  const checkHealth = async () => {
+    setServerStatus("checking");
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), 4000);
+
+    try {
+      const res = await fetch(`${BACKEND_URL}/health`, { signal: controller.signal });
+      clearTimeout(id);
+      if (res.ok) {
+        setServerStatus("active");
+        fetchHistory();
+        return;
+      }
+    } catch (err) {
+      clearTimeout(id);
+      // Backend is slow to respond, likely cold-starting on Render
+      setServerStatus("warming");
+      try {
+        const resLong = await fetch(`${BACKEND_URL}/health`);
+        if (resLong.ok) {
+          setServerStatus("active");
+          fetchHistory();
+        } else {
+          setServerStatus("offline");
+        }
+      } catch (e) {
+        setServerStatus("offline");
+      }
+    }
+  };
+
   useEffect(() => {
-    fetchHistory();
+    checkHealth();
     if (window.innerWidth < 768) {
       setSidebarOpen(false);
     }
@@ -378,17 +413,78 @@ export default function Home() {
             </div>
           </div>
           
-          <div className="flex items-center gap-1.5 text-xs bg-orange-50 px-2.5 py-1.5 rounded-full text-orange-600 font-bold border border-orange-200/60 shadow-sm shrink-0">
-            <Sparkles size={12} className="animate-pulse" />
-            <span className="hidden sm:inline">Gemini 2.5 Active</span>
-            <span className="sm:hidden">Gemini</span>
+          <div className="flex items-center gap-2 shrink-0">
+            {/* Server Status Badge */}
+            {serverStatus === "active" && (
+              <div className="flex items-center gap-1.5 text-xs bg-emerald-50 px-2.5 py-1 rounded-full text-emerald-600 font-bold border border-emerald-200/60 shadow-sm">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+                <span className="hidden md:inline">Server Active</span>
+                <span className="md:hidden">Active</span>
+              </div>
+            )}
+            {serverStatus === "warming" && (
+              <div className="flex items-center gap-1.5 text-xs bg-amber-50 px-2.5 py-1 rounded-full text-amber-600 font-bold border border-amber-200/60 shadow-sm" title="Backend cold start (~50s)">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping shrink-0" />
+                <span className="hidden md:inline">Waking Up...</span>
+                <span className="md:hidden">Waking...</span>
+              </div>
+            )}
+            {serverStatus === "offline" && (
+              <div className="flex items-center gap-1.5 text-xs bg-rose-50 px-2.5 py-1 rounded-full text-rose-600 font-bold border border-rose-200/60 shadow-sm">
+                <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0" />
+                <span className="hidden md:inline">Server Offline</span>
+                <span className="md:hidden">Offline</span>
+              </div>
+            )}
+            {serverStatus === "checking" && (
+              <div className="flex items-center gap-1.5 text-xs bg-slate-50 px-2.5 py-1 rounded-full text-slate-500 font-bold border border-slate-200/60 shadow-sm">
+                <div className="w-2.5 h-2.5 rounded-full border border-t-transparent border-slate-400 animate-spin shrink-0" />
+                <span className="hidden md:inline">Checking API...</span>
+              </div>
+            )}
+            
+            <div className="flex items-center gap-1.5 text-xs bg-orange-50 px-2.5 py-1.5 rounded-full text-orange-600 font-bold border border-orange-200/60 shadow-sm shrink-0">
+              <Sparkles size={12} className="animate-pulse" />
+              <span className="hidden sm:inline">Gemini 2.5 Active</span>
+              <span className="sm:hidden">Gemini</span>
+            </div>
           </div>
         </header>
 
         {/* SCROLLABLE WORKSPACE AREA */}
         <div className="flex-1 overflow-y-auto px-4 md:px-8 pt-6 pb-48 md:pb-56">
           <div className="max-w-3xl mx-auto w-full min-h-full flex flex-col">
-                   {searchResults ? (
+            {/* Warming Notice Bar */}
+            {serverStatus === "warming" && (
+              <div className="mb-4 bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-500/15 rounded-2xl p-4 flex gap-3 shadow-[0_8px_32px_rgba(245,158,11,0.02)] animate-fade-in">
+                <div className="p-1 rounded-lg bg-amber-500/10 text-amber-600 border border-amber-500/20 shadow-sm shrink-0 self-start">
+                  <RefreshCw size={15} className="animate-spin text-amber-500" />
+                </div>
+                <div>
+                  <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider">Backend Server Waking Up</h4>
+                  <p className="text-[10px] text-slate-500 leading-relaxed font-bold mt-1">
+                    Because this project uses Render's free tier, the backend server goes to sleep after inactivity. It is currently waking up (cold starting), which takes about 30–50 seconds. Searches will resume as soon as the server is online.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Offline Notice Bar */}
+            {serverStatus === "offline" && (
+              <div className="mb-4 bg-gradient-to-r from-rose-500/10 via-rose-500/5 to-transparent border border-rose-500/15 rounded-2xl p-4 flex gap-3 shadow-[0_8px_32px_rgba(239,68,68,0.02)] animate-fade-in">
+                <div className="p-1.5 rounded-lg bg-rose-500/10 text-rose-600 border border-rose-500/20 shadow-sm shrink-0 self-start">
+                  <AlertCircle size={15} className="text-rose-500" />
+                </div>
+                <div>
+                  <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider">Backend Server Offline</h4>
+                  <p className="text-[10px] text-slate-500 leading-relaxed font-bold mt-1">
+                    Unable to connect to the backend server. Please verify if it is running or check your network connectivity.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {searchResults ? (
               <div className="space-y-6 pb-24 animate-fade-in relative z-10">
                 {/* Product Header */}
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-200/50 pb-4">
