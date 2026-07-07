@@ -49,7 +49,9 @@ interface HistoryItem {
   results?: string;
 }
 
-const BACKEND_URL = "http://localhost:8000/api";
+const BACKEND_URL = typeof window !== "undefined" && window.location.hostname === "localhost"
+  ? "http://localhost:8000/api"
+  : "https://product-comparison-assistant-backend.onrender.com/api";
 
 const getPlatformColors = (platform: string) => {
   const p = platform.toLowerCase();
